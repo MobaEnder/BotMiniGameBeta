@@ -6,7 +6,7 @@ from discord.ext import commands
 import random
 import asyncio
 
-from data_manager import get_user, update_balance, add_exp, get_level_info
+from data.data_manager import get_user, update_balance, add_exp, get_level_info
 
 class ChickenFightLow(commands.Cog):
     def __init__(self, bot):
