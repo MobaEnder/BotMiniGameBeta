@@ -13,4 +13,4 @@ for filename in os.listdir('./cogs'):
 async def on_ready():
 		print(f'Logged in as {bot.user}')
 
-bot.run(os.getenv("TOKEN"))  # TOKEN phải có trong biến môi trường Railway
+bot.run(os.getenv("DISCORD_TOKEN"))  # TOKEN phải có trong biến môi trường Railway
