@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 import asyncio
 import random
-from data_manager import get_user, update_balance, add_exp
+from data.data_manager import get_user, update_balance, add_exp
 
 JOIN_DURATION = 20  # Giây mở cược
 
