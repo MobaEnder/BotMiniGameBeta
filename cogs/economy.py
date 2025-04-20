@@ -1,93 +1,90 @@
+# cogs/economy.py
 import discord
-from discord import app_commands
 from discord.ext import commands
-import random
-import json
+from discord import app_commands
 import os
+import json
 from datetime import datetime, timedelta
+import motor.motor_asyncio
 
-DATA_FILE = "data/users.json"
+# MongoDB setup
+MONGO_URI = os.getenv("MONGODB_URI")
+mongo_client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
+mongo_db = mongo_client["bot"]
+mongo_users = mongo_db["users"]
 
-def load_data():
-	if not os.path.exists(DATA_FILE):
-		with open(DATA_FILE, "w") as f:
-			json.dump({}, f)
-	with open(DATA_FILE, "r") as f:
-		return json.load(f)
+# Cooldown file cho daily
+DAILY_COOLDOWN_FILE = "data/daily_cooldown.json"
 
-def save_data(data):
-	with open(DATA_FILE, "w") as f:
-		json.dump(data, f, indent=4)
+def load_daily_cooldown():
+    if not os.path.exists(DAILY_COOLDOWN_FILE):
+        with open(DAILY_COOLDOWN_FILE, "w") as f:
+            json.dump({}, f)
+    with open(DAILY_COOLDOWN_FILE, "r") as f:
+        return json.load(f)
 
-def get_user(user_id):
-	data = load_data()
-	user_id = str(user_id)
-	if user_id not in data:
-		data[user_id] = {
-			"money": 0,
-			"last_daily": "1970-01-01T00:00:00",
-			"last_work": "1970-01-01T00:00:00"
-		}
-		save_data(data)
-	return data[user_id]
+def save_daily_cooldown(data):
+    with open(DAILY_COOLDOWN_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
-def get_balance(user_id):
-	user = get_user(user_id)
-	return user.get("money", 0)
+# Lấy số dư từ MongoDB
+async def get_balance(user_id):
+    user_id = str(user_id)
+    user_data = await mongo_users.find_one({"_id": user_id})
+    if not user_data:
+        await mongo_users.insert_one({"_id": user_id, "money": 0})
+        return 0
+    return user_data.get("money", 0)
 
-def update_balance(user_id, amount):
-	data = load_data()
-	user_id = str(user_id)
-	user = get_user(user_id)
-	user["money"] += amount
-	data[user_id] = user
-	save_data(data)
-	return user["money"]
-
-def set_last_time(user_id, key):
-	data = load_data()
-	user_id = str(user_id)
-	user = get_user(user_id)
-	user[key] = datetime.utcnow().isoformat()
-	data[user_id] = user
-	save_data(data)
-
-def can_use_command(user_id, key, cooldown_hours):
-	last_time_str = get_user(user_id).get(key, "1970-01-01T00:00:00")
-	last_time = datetime.fromisoformat(last_time_str)
-	return datetime.utcnow() - last_time >= timedelta(hours=cooldown_hours)
-
-# ---------------------- Discord Cog ----------------------
+# Cộng tiền vào tài khoản
+async def add_money(user_id, amount):
+    user_id = str(user_id)
+    user_data = await mongo_users.find_one({"_id": user_id})
+    if not user_data:
+        await mongo_users.insert_one({"_id": user_id, "money": amount})
+        return amount
+    new_balance = user_data.get("money", 0) + amount
+    await mongo_users.update_one({"_id": user_id}, {"$set": {"money": new_balance}})
+    return new_balance
 
 class Economy(commands.Cog):
-	def __init__(self, bot):
-		self.bot = bot
+    def __init__(self, bot):
+        self.bot = bot
 
-	@app_commands.command(name="daily", description="Nhận tiền thưởng hàng ngày")
-	async def daily(self, interaction: discord.Interaction):
-		if not can_use_command(interaction.user.id, "last_daily", 24):
-			await interaction.response.send_message(
-				"🕒 Bạn đã nhận thưởng hôm nay rồi, hãy quay lại sau 24 giờ!",
-				ephemeral=True
-			)
-			return
+    @app_commands.command(name="daily", description="Nhận phần thưởng hàng ngày!")
+    async def daily(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        cooldown_data = load_daily_cooldown()
+        now = datetime.utcnow()
 
-		reward = random.randint(50, 150)
-		update_balance(interaction.user.id, reward)
-		set_last_time(interaction.user.id, "last_daily")
-		balance = get_balance(interaction.user.id)
+        if user_id in cooldown_data:
+            last_claimed = datetime.strptime(cooldown_data[user_id], "%Y-%m-%d %H:%M:%S")
+            if now < last_claimed + timedelta(hours=24):
+                remaining = (last_claimed + timedelta(hours=24)) - now
+                hours = remaining.seconds // 3600
+                minutes = (remaining.seconds % 3600) // 60
+                return await interaction.response.send_message(
+                    f"📆 Bạn đã nhận quà hôm nay rồi!\nHãy quay lại sau **{hours} giờ {minutes} phút** nữa.",
+                    ephemeral=True
+                )
 
-		await interaction.response.send_message(
-			f"🎁 Bạn đã nhận được **{reward} xu** hôm nay!\n"
-			f"💰 Số dư hiện tại của bạn là **{balance} xu**."
-		)
+        # Thưởng hàng ngày
+        reward = 1000
+        new_balance = await add_money(user_id, reward)
+        cooldown_data[user_id] = now.strftime("%Y-%m-%d %H:%M:%S")
+        save_daily_cooldown(cooldown_data)
 
-	@app_commands.command(name="balance", description="Xem số dư hiện tại của bạn")
-	async def balance(self, interaction: discord.Interaction):
-		balance = get_balance(interaction.user.id)
-		await interaction.response.send_message(
-			f"💰 Số dư của bạn là **{balance} xu**."
-		)
+        await interaction.response.send_message(
+            f"🎁 Bạn đã nhận được **{reward} xu** hôm nay!\n💰 Số dư hiện tại: **{new_balance} xu**"
+        )
+
+    @app_commands.command(name="balance", description="Xem số dư của bạn.")
+    async def balance(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        balance = await get_balance(user_id)
+        await interaction.response.send_message(
+            f"💳 Số dư hiện tại của bạn là: **{balance} xu**"
+        )
 
 async def setup(bot):
-	await bot.add_cog(Economy(bot))
+    await bot.add_cog(Economy(bot))
