@@ -12,7 +12,7 @@ class BongDa(commands.Cog):
 				self.bot = bot
 				self.countries = [
 						"Japan", "PXG", "Batstard Muchen", "Ubers", "Blue Lock",
-						"Italy", "England", "Manshine", "Barcha", ""
+						"Italy", "England", "Manshine", "Barcha", "REAL"
 				]
 				self.game_room = None
 				self.players = []
