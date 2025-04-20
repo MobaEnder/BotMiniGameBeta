@@ -4,37 +4,17 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import random
-import json
-import os
 from datetime import datetime, timedelta
+import asyncio
 
-USER_FILE = "data/users.json"
+from data.data_manager import get_user, update_balance, add_exp
 
-def load_users():
-	if not os.path.exists(USER_FILE):
-		with open(USER_FILE, "w") as f:
-			json.dump({}, f)
-	with open(USER_FILE, "r") as f:
-		return json.load(f)
-
-def save_users(data):
-	with open(USER_FILE, "w") as f:
-		json.dump(data, f, indent=4)
-
-def get_user_data(user_id):
-	data = load_users()
-	return data.get(str(user_id), {})
-
-def get_lode_cooldown(user_id):
-	user = get_user_data(user_id)
-	last_time = datetime.fromisoformat(user.get("last_lode", "1970-01-01T00:00:00"))
-	time_passed = datetime.utcnow() - last_time
-	cooldown = timedelta(minutes=1)
-	return None if time_passed >= cooldown else cooldown - time_passed
+COOLDOWN = timedelta(minutes=1)
 
 class Lode(commands.Cog):
 	def __init__(self, bot):
 		self.bot = bot
+		self.cooldowns = {}
 
 	@app_commands.command(name="lodemienbac", description="🎯 Đoán số từ 1-10, có 3 lần đoán. Trúng x4 số tiền!")
 	@app_commands.describe(
@@ -43,68 +23,57 @@ class Lode(commands.Cog):
 		so2="Số thứ hai bạn chọn (1-10)",
 		so3="Số thứ ba bạn chọn (1-10)"
 	)
-	async def lodemienbac(
-		self,
-		interaction: discord.Interaction,
-		bet: int,
-		so1: int,
-		so2: int,
-		so3: int
-	):
+	async def lodemienbac(self, interaction: discord.Interaction, bet: int, so1: int, so2: int, so3: int):
 		await interaction.response.defer()
 
-		user = interaction.user
-		user_id = str(user.id)
-		users = load_users()
-
-		if user_id not in users:
-			await interaction.followup.send("❌ Bạn chưa có tài khoản!", ephemeral=True)
-			return
+		user_id = str(interaction.user.id)
+		user = get_user(user_id)
 
 		if not all(1 <= s <= 10 for s in [so1, so2, so3]):
-			await interaction.followup.send("❌ Bạn chỉ được chọn số từ 1 đến 10!", ephemeral=True)
-			return
+			return await interaction.followup.send("❌ Bạn chỉ được chọn số từ 1 đến 10!", ephemeral=True)
 
-		cd = get_lode_cooldown(user.id)
-		if cd:
-			mins, secs = divmod(int(cd.total_seconds()), 60)
-			return await interaction.followup.send(
-				f"🕓 Bạn cần chờ {mins} phút {secs} giây nữa để chơi tiếp!", ephemeral=True
-			)
+		# Cooldown
+		last_time = user.get("last_lode", "1970-01-01T00:00:00")
+		time_passed = datetime.utcnow() - datetime.fromisoformat(last_time)
+		if time_passed < COOLDOWN:
+			remaining = COOLDOWN - time_passed
+			mins, secs = divmod(int(remaining.total_seconds()), 60)
+			return await interaction.followup.send(f"🕓 Chờ {mins} phút {secs} giây nữa để chơi tiếp!", ephemeral=True)
 
-		user_data = users[user_id]
-		if user_data.get("money", 0) < bet:
-			await interaction.followup.send("💸 Bạn không đủ tiền để cược!", ephemeral=True)
-			return
+		if user["money"] < bet:
+			return await interaction.followup.send("💸 Bạn không đủ tiền để cược!", ephemeral=True)
 
-		user_data["money"] -= bet
-		user_data["last_lode"] = datetime.utcnow().isoformat()
-		save_users(users)
+		# Trừ tiền & cập nhật thời gian
+		update_balance(user_id, -bet)
+		user["last_lode"] = datetime.utcnow().isoformat()
 
+		# Quay số hiệu ứng
 		spin_msg = await interaction.followup.send("🎰 Đang quay số Miền Bắc...")
-		await discord.utils.sleep_until(datetime.utcnow() + timedelta(seconds=3))
+		await asyncio.sleep(2)
 
 		result = random.randint(1, 10)
 		emojis = ["🍉", "🍋", "🌟", "🍓", "🎯", "🍇", "🍀", "🎈", "💎", "🔥"]
-		spin_text = ""
+		result_emoji = random.choice(emojis)
 
-		for i in range(10):
+		spin_text = ""
+		for _ in range(8):
 			spin_text += f"🎲 {random.randint(1, 10)} {random.choice(emojis)}\n"
 			await spin_msg.edit(content=f"🔄 Quay số...\n{spin_text}")
-			await discord.utils.sleep_until(datetime.utcnow() + timedelta(milliseconds=500))
+			await asyncio.sleep(0.4)
 
-		win = result in [so1, so2, so3]
-		if win:
+		# Kết quả
+		if result in [so1, so2, so3]:
 			won = bet * 4
-			user_data["money"] += won
-			save_users(users)
+			update_balance(user_id, won)
+			add_exp(user_id, 30)
 			await spin_msg.edit(content=(
-				f"🎉 Kết quả: **{result} {random.choice(emojis)}**\n"
-				f"✅ Bạn đã đoán trúng! Nhận được **🪙 {won:,} xu**!"
+				f"🎉 Kết quả: **{result} {result_emoji}**\n"
+				f"✅ Bạn đã đoán trúng và nhận **🪙 {won:,} xu**!"
 			))
 		else:
+			add_exp(user_id, 30)
 			await spin_msg.edit(content=(
-				f"🎯 Kết quả: **{result} {random.choice(emojis)}**\n"
+				f"🎯 Kết quả: **{result} {result_emoji}**\n"
 				f"❌ Rất tiếc, bạn đã đoán sai!"
 			))
 
