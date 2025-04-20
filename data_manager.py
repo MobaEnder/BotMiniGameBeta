@@ -1,11 +1,13 @@
+# data_manager.py
 from pymongo import MongoClient
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 
-# Lấy URI từ biến môi trường hoặc chỉnh URI thẳng ở đây
-MONGO_URI = os.getenv("MONGO_URI") or "mongodb://localhost:27017"
+load_dotenv()
+MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client["test"]
+db = client["bot"]
 collection = db["users"]
 
 def get_user(user_id):
@@ -33,7 +35,7 @@ def update_balance(user_id, amount):
     return new_balance
 
 def set_last_time(user_id, key, time_str):
-    user = get_user(user_id)
+    get_user(user_id)
     collection.update_one({"_id": user_id}, {"$set": {key: time_str}})
 
 def get_last_time(user_id, key):
@@ -44,22 +46,15 @@ def add_exp(user_id, amount):
     user = get_user(user_id)
     exp = user.get("exp", 0) + amount
     level = user.get("level", 1)
-    next_level_exp = 100 * level
-
-    while exp >= next_level_exp:
-        exp -= next_level_exp
+    while exp >= 100 * level:
+        exp -= 100 * level
         level += 1
-        next_level_exp = 100 * level
-
-    collection.update_one(
-        {"_id": user_id},
-        {"$set": {"exp": exp, "level": level}}
-    )
+    collection.update_one({"_id": user_id}, {"$set": {"exp": exp, "level": level}})
     return exp, level
 
 def get_level_info(user_id):
     user = get_user(user_id)
-    exp = user.get("exp", 0)
     level = user.get("level", 1)
-    next_level_exp = 100 * level
-    return {"level": level, "exp": exp, "next_level_exp": next_level_exp}
+    exp = user.get("exp", 0)
+    next_exp = 100 * level
+    return {"level": level, "exp": exp, "next_level_exp": next_exp}
