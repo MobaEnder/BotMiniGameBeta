@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from data_manager import collection  # Dùng trực tiếp MongoDB collection
+from data.data_manager import collection  # Dùng trực tiếp MongoDB collection
 
 
 class Leaderboard(commands.Cog):
