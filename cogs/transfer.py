@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from data_manager import get_balance, update_balance
+from data.data_manager import get_balance, update_balance
 
 
 class Transfer(commands.Cog):
