@@ -20,6 +20,6 @@ async def load_cogs():
 async def main():
     async with bot:
         await load_cogs()
-        await bot.start(os.getenv("DISCOD_TOKEN"))
+        await bot.start(os.getenv("TOKEN"))
 
 asyncio.run(main())
