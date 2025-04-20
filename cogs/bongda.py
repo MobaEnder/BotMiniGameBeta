@@ -11,8 +11,8 @@ class BongDa(commands.Cog):
 		def __init__(self, bot):
 				self.bot = bot
 				self.countries = [
-						"Brazil", "Argentina", "Germany", "France", "Spain",
-						"Italy", "England", "Portugal", "Netherlands", "Belgium"
+						"Japan", "PXG", "Batstard Muchen", "Ubers", "Blue Lock",
+						"Italy", "England", "Manshine", "Barcha", ""
 				]
 				self.game_room = None
 				self.players = []
