@@ -4,7 +4,7 @@ from discord.ext import commands
 from datetime import datetime, timedelta
 import random
 import asyncio
-from data_manager import get_user, update_balance, add_exp
+from data.data_manager import get_user, update_balance, add_exp
 
 class BombDefuse(commands.Cog):
 	def __init__(self, bot):
